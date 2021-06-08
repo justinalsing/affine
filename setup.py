@@ -2,6 +2,16 @@
 
 from setuptools import setup, find_packages
 import sys
+import platform
+
+install_requires = ['tqdm', 'numpy']
+if platform.machine() == 'arm64':
+    try:
+    import tensorflow
+  except ImportError:
+    raise ImportError('install tensorflow manually')
+else:
+  install_requires.append('tensorflow>=2.0')
 
 setup(name='affine',
       version='v0.1',
@@ -9,8 +19,6 @@ setup(name='affine',
       author='Justin Alsing',
       url='https://github.com/justinalsing/affine',
       packages=find_packages(),
-      install_requires=[
-	        "numpy",
-          "tqdm",
-          "tensorflow"
-      ])
+      install_requires=install_requires)
+
+
