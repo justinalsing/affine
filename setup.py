@@ -11,6 +11,6 @@ setup(name='affine',
       packages=find_packages(),
       install_requires=[
 	        "numpy",
-          "tqdm>=4.41.1",
-          "tensorflow>=2.3.0"
+          "tqdm",
+          "tensorflow"
       ])
