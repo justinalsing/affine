@@ -7,11 +7,11 @@ import platform
 install_requires = ['tqdm', 'numpy']
 if platform.machine() == 'arm64':
     try:
-    import tensorflow
-  except ImportError:
-    raise ImportError('install tensorflow manually')
+        import tensorflow
+    except ImportError:
+        raise ImportError('install tensorflow manually')
 else:
-  install_requires.append('tensorflow>=2.0')
+    install_requires.append('tensorflow>=2.0')
 
 setup(name='affine',
       version='v0.1',
