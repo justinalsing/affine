@@ -17,7 +17,7 @@ def affine_sample(log_prob, n_steps, current_state, args=[], progressbar=True):
     logp_current2 = tf.where(tf.math.is_nan(logp_current2), tf.ones_like(logp_current2)*tf.math.log(0.), logp_current2)
 
     # holder for the whole chain
-    chain = [tf.concat([current_state1, current_state2], axis=0)]
+    chain = [tf.expand_dims(tf.concat([current_state1, current_state2], axis=0), axis=0)]
     
     # progress bar?
     loop = trange if progressbar else range
@@ -70,12 +70,10 @@ def affine_sample(log_prob, n_steps, current_state, args=[], progressbar=True):
         logp_current2 = tf.where(accept2_, logp_proposed2, logp_current2)
 
         # append to chain
-        chain.append(tf.concat([current_state1, current_state2], axis=0))
+        chain.append(tf.expand_dims(tf.concat([current_state1, current_state2], axis=0), axis=0))
 
-    # stack up the chain
-    chain = tf.stack(chain, axis=0)
-    
-    return chain
+    # stack up the chain and return    
+    return tf.concat(chain, axis=0)
 
 # state variables have shape: (n_walkers, n_batch, n_params)
 def affine_sample_batch(log_prob, n_steps, current_state, args=[], progressbar=True):
@@ -93,7 +91,7 @@ def affine_sample_batch(log_prob, n_steps, current_state, args=[], progressbar=T
     logp_current2 = tf.where(tf.math.is_nan(logp_current2), tf.ones_like(logp_current2)*tf.math.log(0.), logp_current2)
 
     # holder for the whole chain
-    chain = [tf.concat([current_state1, current_state2], axis=0)]
+    chain = [tf.expand_dims(tf.concat([current_state1, current_state2], axis=0), axis=0)]
 
     # progress bar?
     loop = trange if progressbar else range
@@ -146,9 +144,7 @@ def affine_sample_batch(log_prob, n_steps, current_state, args=[], progressbar=T
         logp_current2 = tf.where(accept2_, logp_proposed2, logp_current2)
 
         # append to chain
-        chain.append(tf.concat([current_state1, current_state2], axis=0))
+        chain.append(tf.expand_dims(tf.concat([current_state1, current_state2], axis=0), axis=0))
 
-    # stack up the chain
-    chain = tf.stack(chain, axis=0)
-    
-    return chain
+    # stack up the chain and return
+    return tf.concat(chain, axis=0)
