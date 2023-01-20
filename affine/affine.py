@@ -1,150 +1,106 @@
-import tensorflow as tf
-import numpy as np
-from tqdm import trange
+import torch
+from tqdm import tqdm
 
-def affine_sample(log_prob, n_steps, current_state, args=[], progressbar=True):
-    
-    # split the current state
-    current_state1, current_state2 = current_state
-    
-    # pull out the number of parameters and walkers
-    n_walkers, n_params = current_state1.shape
+def sample(log_prob, n_params, n_walkers, n_steps, walkers1, walkers2):
 
-    # initial target log prob for the walkers (and set any nans to -inf)...
-    logp_current1 = log_prob(current_state1, *args)
-    logp_current2 = log_prob(current_state2, *args)
-    logp_current1 = tf.where(tf.math.is_nan(logp_current1), tf.ones_like(logp_current1)*tf.math.log(0.), logp_current1)
-    logp_current2 = tf.where(tf.math.is_nan(logp_current2), tf.ones_like(logp_current2)*tf.math.log(0.), logp_current2)
+    # Progress-bar
+    pbar = tqdm(total=n_steps, desc="Sampling")  # Jupyter notebook or qtconsole
 
-    # holder for the whole chain
-    chain = [tf.expand_dims(tf.concat([current_state1, current_state2], axis=0), axis=0)]
-    
-    # progress bar?
-    loop = trange if progressbar else range
+    # Initialize current state
+    current_state1 = torch.as_tensor(walkers1)
+    current_state2 = torch.as_tensor(walkers2)
+
+    # Initial target log prob for the walkers (and set any nans to -inf)...
+    logp_current1 = log_prob(current_state1)
+    logp_current2 = log_prob(current_state2)
+
+    logp_current1 = torch.as_tensor(logp_current1)
+    logp_current2 = torch.as_tensor(logp_current2)
+
+    logp_current1 = torch.where(
+        torch.isnan(logp_current1),
+        torch.ones_like(logp_current1).fill_(float("inf")),
+        logp_current1)
+    logp_current2 = torch.where(
+        torch.isnan(logp_current2),
+        torch.ones_like(logp_current2).fill_(float("inf")),
+        logp_current2)
+
+    # Holder for the whole chain
+    chain = [torch.cat([current_state1, current_state2], axis=0)]
+
 
     # MCMC loop
-    for epoch in loop(1, n_steps):
+    for epoch in range(1, n_steps):
 
-        # first set of walkers:
+        # FIRST SET OF WALKERS:
+        # Proposals
+        #idx1 = torch.as_tensor(np.random.randint(0, n_walkers, n_walkers))
+        idx1 = torch.randint(low=0, high=n_walkers, size=(n_walkers,))
+        partners1 = current_state2[idx1]
+        z1 = 0.5 * (torch.rand((n_walkers,)) + 1) ** 2
+        proposed_state1 = partners1 + (z1 * (current_state1 - partners1).T).T
 
-        # proposals
-        partners1 = tf.gather(current_state2, np.random.randint(0, n_walkers, n_walkers))
-        z1 = 0.5*(tf.random.uniform([n_walkers], minval=0, maxval=1)+1)**2
-        proposed_state1 = partners1 + tf.transpose(z1*tf.transpose(current_state1 - partners1))
+        # Target log prob at proposed points
+        logp_proposed1 = log_prob(proposed_state1)
+        logp_proposed1 = torch.as_tensor(logp_proposed1)
+        logp_proposed1 = torch.where(
+            torch.isnan(logp_proposed1),
+            torch.ones_like(logp_proposed1).fill_(float("inf")),
+            logp_proposed1)
 
-        # target log prob at proposed points
-        logp_proposed1 = log_prob(proposed_state1, *args)
-        logp_proposed1 = tf.where(tf.math.is_nan(logp_proposed1), tf.ones_like(logp_proposed1)*tf.math.log(0.), logp_proposed1)
+        # Acceptance probability
+        p_accept1 = torch.minimum(
+            torch.ones(n_walkers),
+            z1 ** (n_params - 1) * torch.exp(logp_proposed1 - logp_current1))
 
-        # acceptance probability
-        p_accept1 = tf.math.minimum(tf.ones(n_walkers), z1**(n_params-1)*tf.exp(logp_proposed1 - logp_current1) )
+        # Accept or not
+        accept1_ = torch.rand((n_walkers,)) <= p_accept1
+        accept1 = accept1_.type(torch.float32)
 
-        # accept or not
-        accept1_ = (tf.random.uniform([n_walkers], minval=0, maxval=1) <= p_accept1)
-        accept1 = tf.cast(accept1_, tf.float32)
+        # Update the state
+        current_state1 = (
+            (current_state1).T * (1 - accept1) + (proposed_state1).T * accept1).T
+        logp_current1 = torch.where(accept1_, logp_proposed1, logp_current1)
 
-        # update the state
-        current_state1 = tf.transpose( tf.transpose(current_state1)*(1-accept1) + tf.transpose(proposed_state1)*accept1)
-        logp_current1 = tf.where(accept1_, logp_proposed1, logp_current1)
+        # SECOND SET OF WALKERS:
+        # Proposals
+        #idx2 = torch.as_tensor(np.random.randint(0, n_walkers, n_walkers))
+        idx2 = torch.randint(low=0, high=n_walkers, size=(n_walkers,))
+        partners2 = current_state1[idx2]
+        z2 = 0.5 * (torch.rand((n_walkers,)) + 1) ** 2
+        proposed_state2 = partners2 + (z2 * (current_state2 - partners2).T).T
 
-        # second set of walkers:
+        # Target log prob at proposed points
+        logp_proposed2 = log_prob(proposed_state2)
+        logp_proposed2 = torch.as_tensor(logp_proposed2)
+        logp_proposed2 = torch.where(
+            torch.isnan(logp_proposed2),
+            torch.ones_like(logp_proposed2).fill_(float("inf")),
+            logp_proposed2)
 
-        # proposals
-        partners2 = tf.gather(current_state1, np.random.randint(0, n_walkers, n_walkers))
-        z2 = 0.5*(tf.random.uniform([n_walkers], minval=0, maxval=1)+1)**2
-        proposed_state2 = partners2 + tf.transpose(z2*tf.transpose(current_state2 - partners2))
+        # Acceptance probability
+        p_accept2 = torch.minimum(
+            torch.ones(n_walkers),
+            z2 ** (n_params - 1) * torch.exp(logp_proposed2 - logp_current2))
 
-        # target log prob at proposed points
-        logp_proposed2 = log_prob(proposed_state2, *args)
-        logp_proposed2 = tf.where(tf.math.is_nan(logp_proposed2), tf.ones_like(logp_proposed2)*tf.math.log(0.), logp_proposed2)
+        # Accept or not
+        accept2_ = torch.rand((n_walkers,)) <= p_accept2
+        accept2 = accept2_.type(torch.float32)
 
-        # acceptance probability
-        p_accept2 = tf.math.minimum(tf.ones(n_walkers), z2**(n_params-1)*tf.exp(logp_proposed2 - logp_current2) )
+        # Update the state
+        current_state2 = (
+            (current_state2).T * (1 - accept2) + (proposed_state2).T * accept2).T
+        logp_current2 = torch.where(accept2_, logp_proposed2, logp_current2)
 
-        # accept or not
-        accept2_ = (tf.random.uniform([n_walkers], minval=0, maxval=1) <= p_accept2)
-        accept2 = tf.cast(accept2_, tf.float32)
+        # Append to chain
+        chain.append(torch.cat([current_state1, current_state2], axis=0))
 
-        # update the state
-        current_state2 = tf.transpose( tf.transpose(current_state2)*(1-accept2) + tf.transpose(proposed_state2)*accept2)
-        logp_current2 = tf.where(accept2_, logp_proposed2, logp_current2)
+        # Update the progressbar
+        pbar.update(1)
 
-        # append to chain
-        chain.append(tf.expand_dims(tf.concat([current_state1, current_state2], axis=0), axis=0))
+    # Stack up the chain
+    chain = torch.stack(chain, axis=0)
 
-    # stack up the chain and return    
-    return tf.concat(chain, axis=0)
-
-# state variables have shape: (n_walkers, n_batch, n_params)
-def affine_sample_batch(log_prob, n_steps, current_state, args=[], progressbar=True):
-    
-    # split the current state
-    current_state1, current_state2 = current_state
-    
-    # pull out the number of parameters and walkers
-    n_walkers, n_batch, n_params = current_state1.shape
-
-    # initial target log prob for the walkers (and set any nans to -inf)...
-    logp_current1 = log_prob(current_state1, *args)
-    logp_current2 = log_prob(current_state2, *args)
-    logp_current1 = tf.where(tf.math.is_nan(logp_current1), tf.ones_like(logp_current1)*tf.math.log(0.), logp_current1)
-    logp_current2 = tf.where(tf.math.is_nan(logp_current2), tf.ones_like(logp_current2)*tf.math.log(0.), logp_current2)
-
-    # holder for the whole chain
-    chain = [tf.expand_dims(tf.concat([current_state1, current_state2], axis=0), axis=0)]
-
-    # progress bar?
-    loop = trange if progressbar else range
-    
-    # MCMC loop
-    for epoch in loop(1, n_steps):
-
-        # first set of walkers:
-
-        # proposals
-        partners1 = tf.gather(current_state2, np.random.randint(0, n_walkers, n_walkers))
-        z1 = 0.5*(tf.random.uniform([n_walkers, n_batch], minval=0, maxval=1)+1)**2
-        proposed_state1 = partners1 + tf.transpose(z1*tf.transpose(current_state1 - partners1, perm=[2, 0, 1]), perm=[1, 2, 0])
-
-        # target log prob at proposed points
-        logp_proposed1 = log_prob(proposed_state1, *args)
-        logp_proposed1 = tf.where(tf.math.is_nan(logp_proposed1), tf.ones_like(logp_proposed1)*tf.math.log(0.), logp_proposed1)
-
-        # acceptance probability
-        p_accept1 = tf.math.minimum(tf.ones([n_walkers, n_batch]), z1**(n_params-1)*tf.exp(logp_proposed1 - logp_current1) )
-
-        # accept or not
-        accept1_ = (tf.random.uniform([n_walkers, n_batch], minval=0, maxval=1) <= p_accept1)
-        accept1 = tf.cast(accept1_, tf.float32)
-
-        # update the state
-        current_state1 = tf.transpose( tf.transpose(current_state1, perm=[2, 0, 1])*(1-accept1) + tf.transpose(proposed_state1, perm=[2, 0, 1])*accept1, perm=[1, 2, 0])
-        logp_current1 = tf.where(accept1_, logp_proposed1, logp_current1)
-
-        # second set of walkers:
-
-        # proposals
-        partners2 = tf.gather(current_state1, np.random.randint(0, n_walkers, n_walkers))
-        z2 = 0.5*(tf.random.uniform([n_walkers, n_batch], minval=0, maxval=1)+1)**2
-        proposed_state2 = partners2 + tf.transpose( z2*tf.transpose(current_state2 - partners2, perm=[2, 0, 1]), perm=[1, 2, 0])
-
-        # target log prob at proposed points
-        logp_proposed2 = log_prob(proposed_state2, *args)
-        logp_proposed2 = tf.where(tf.math.is_nan(logp_proposed2), tf.ones_like(logp_proposed2)*tf.math.log(0.), logp_proposed2)
-
-        # acceptance probability
-        p_accept2 = tf.math.minimum(tf.ones([n_walkers, n_batch]), z2**(n_params-1)*tf.exp(logp_proposed2 - logp_current2) )
-
-        # accept or not
-        accept2_ = (tf.random.uniform([n_walkers, n_batch], minval=0, maxval=1) <= p_accept2)
-        accept2 = tf.cast(accept2_, tf.float32)
-
-        # update the state
-        current_state2 = tf.transpose( tf.transpose(current_state2, perm=[2, 0, 1])*(1-accept2) + tf.transpose(proposed_state2, perm=[2, 0, 1])*accept2, perm=[1, 2, 0])
-        logp_current2 = tf.where(accept2_, logp_proposed2, logp_current2)
-
-        # append to chain
-        chain.append(tf.expand_dims(tf.concat([current_state1, current_state2], axis=0), axis=0))
-
-    # stack up the chain and return
-    return tf.concat(chain, axis=0)
+    # Chain = np.unique(chain, axis=0) # this may need to be here,
+    return chain[1:, :, :]

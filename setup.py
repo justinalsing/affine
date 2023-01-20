@@ -4,21 +4,12 @@ from setuptools import setup, find_packages
 import sys
 import platform
 
-install_requires = ['tqdm', 'numpy']
-if platform.machine() == 'arm64':
-    try:
-        import tensorflow
-    except ImportError:
-        raise ImportError('install tensorflow manually')
-else:
-    install_requires.append('tensorflow>=2.0')
+install_requires = ['tqdm', 'numpy', 'torch']
 
 setup(name='affine',
       version='v0.1',
-      description='parallel affine sampling in tensorflow',
-      author='Justin Alsing',
+      description='Parallel affine sampling in torch',
+      author='Justin Alsing & Jed Homer',
       url='https://github.com/justinalsing/affine',
       packages=find_packages(),
       install_requires=install_requires)
-
-
