@@ -4,21 +4,16 @@ from setuptools import setup, find_packages
 import sys
 import platform
 
-install_requires = ['tqdm', 'numpy']
-if platform.machine() == 'arm64':
-    try:
-        import tensorflow
-    except ImportError:
-        raise ImportError('install tensorflow manually')
-else:
-    install_requires.append('tensorflow>=2.0')
+install_requires = ['tqdm', 'numpy', 'matplotlib']
+try:
+    import jax 
+except ImportError:
+    raise ImportError('Please install JAX manually! See https://jax.readthedocs.io/en/latest/installation.html for more information.')
 
 setup(name='affine',
       version='v0.1',
-      description='parallel affine sampling in tensorflow',
-      author='Justin Alsing',
+      description='Parallel affine sampling in JAX.',
+      author='Justin Alsing & Jed Homer',
       url='https://github.com/justinalsing/affine',
       packages=find_packages(),
       install_requires=install_requires)
-
-
