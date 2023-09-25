@@ -123,10 +123,10 @@ def sample_batch(log_prob, n_steps, current_state, args=[], progressbar=True):
     chain = [torch.unsqueeze(torch.cat([current_state1, current_state2], dim=0), dim=0)]
 
     # Progress bar?
-    loop = tqdm if progressbar else range
+    loop = tqdm(range(1, n_steps)) if progressbar else range(1, n_steps)
 
     # MCMC loop
-    for epoch in loop(1, n_steps):
+    for epoch in loop:
         # First set of walkers:
         # Proposals
         partners1 = current_state2[np.random.randint(0, n_walkers, n_walkers)]
