@@ -1,14 +1,13 @@
 import torch
 from tqdm import tqdm
 
-def sample(log_prob, n_params, n_walkers, n_steps, walkers, progress=True, save_lp=False):
+def sample(log_prob, n_params, n_walkers, n_steps, walkers1, walkers2, progress=True, save_lp=False):
 
     # Progress-bar
     if progress:
         pbar = tqdm(total=n_steps, desc="Sampling")  # Jupyter notebook or qtconsole
 
     # Initialize current state
-    walkers1, walkers2 = walkers
     current_state1 = torch.as_tensor(walkers1)
     current_state2 = torch.as_tensor(walkers2)
 
@@ -118,7 +117,7 @@ def sample(log_prob, n_params, n_walkers, n_steps, walkers, progress=True, save_
         # Chain = np.unique(chain, axis=0) # this may need to be here,
         return chain
 
-def sample_batch(log_prob, n_steps, n_burnin, current_state, thin=1, args=[], progressbar=True, savelp=False, device="cpu"):
+def sample_batch(log_prob, n_steps, current_state, n_burnin=0, thin=1, args=[], progress=True, save_lp=False, device="cpu"):
     # Split the current state
     current_state1, current_state2 = current_state
 
@@ -133,11 +132,11 @@ def sample_batch(log_prob, n_steps, n_burnin, current_state, thin=1, args=[], pr
 
     # Holder for the whole chain
     chain = torch.zeros((int((n_steps-n_burnin)/thin), n_walkers*2, n_batch, n_params), device=device)
-    if savelp is True:
+    if save_lp is True:
         lpchain = torch.zeros((int((n_steps-n_burnin)/thin), n_walkers*2, n_batch), device=device)
 
     # Progress bar?
-    loop = tqdm(range(1, n_steps)) if progressbar else range(1, n_steps)
+    loop = tqdm(range(1, n_steps)) if progress else range(1, n_steps)
 
     # counter variable
     counter = 0
@@ -189,12 +188,12 @@ def sample_batch(log_prob, n_steps, n_burnin, current_state, thin=1, args=[], pr
         # Append to chain if we're past burnin
         if epoch >= n_burnin and epoch%thin == (thin-1):
             chain[counter] = torch.unsqueeze(torch.cat([current_state1, current_state2], dim=0), dim=0)
-            if savelp is True:
+            if save_lp is True:
                 lpchain[counter] = torch.unsqueeze(torch.cat([logp_current1, logp_current2], dim=0), dim=0)
             counter += 1
 
     # Stack up the chain and return
-    if savelp is True:
+    if save_lp is True:
         return chain, lpchain
     else:
         return chain
