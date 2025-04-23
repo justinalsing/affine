@@ -121,6 +121,11 @@ def sample_batch(log_prob, n_steps, current_state, n_burnin=0, thin=1, args=[], 
     # Split the current state
     current_state1, current_state2 = current_state
 
+    #Move states to GPU if required
+    if device=="cuda":
+        current_state1 = current_state1.cuda()
+        current_state2 = current_state2.cuda()
+
     # Pull out the number of parameters, walkers, and batch size
     n_walkers, n_batch, n_params = current_state1.shape
 
