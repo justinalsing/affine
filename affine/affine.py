@@ -2,6 +2,48 @@ import torch
 from tqdm import tqdm
 
 def sample(log_prob, n_params, n_walkers, n_steps, walkers1, walkers2, progress=True, save_lp=False):
+    """
+    Run affine inavriant MCMC to sample a single posterior.
+
+    This uses the parallel stretch move (Foreman-Mackey et al. 2013)
+    to evolve two simultaneous ensembles of walkers.
+
+    Parameters
+    ----------
+    log_prob : callable
+        Function for evaluating the target log posterior. Should take a
+        single `torch.Tensor` of parameters as input, and should return
+        a `torch.Tensor` of log probabilities. For an input of shape
+        `(n_walkers, n_params)`, `log_prob` should return shape `(n_walkers,)`.
+    n_params : int
+        Number of model parameters being sampled.
+    n_walkers : int
+        Number of walkers per ensemble. Total number of chains will 
+        be `2*n_walkers`.
+    n_steps : int
+        Number of steps to take. One step evolves all walkers in the
+        two ensembles, so the total number of posterior samples per
+        parameter will be `2 * n_walkers * n_steps`.
+    walkers1 : torch.Tensor
+        Initial positions for the first ensemble of walkers. Should have
+        shape `(n_walkers, n_params)`.
+    walkers2 : torch.Tensor
+        Initial positions for the second ensemble of walkers. Should have
+        shape `(n_walkers, n_params)`.
+    progress : bool, optional
+        If `True`, shows a progress bar using `tqdm`. Default is `True`.
+    save_lp : bool, optional
+        If `True`, saves the log probability of each MCMC sample.
+        Default is `False`.
+
+    Returns
+    -------
+    chain : torch.Tensor
+        MCMC samples of parameters. Has shape `(n_steps, 2*n_walkers, n_params)`.
+    lp_chain : torch.Tensor, optional
+        Log probability for each MCMC sample. Shape `(n_steps, 2*n_walkers)`.
+        Only returned if `save_lp=True`.
+    """
 
     # Progress-bar
     if progress:
@@ -118,6 +160,62 @@ def sample(log_prob, n_params, n_walkers, n_steps, walkers1, walkers2, progress=
         return chain
 
 def sample_batch(log_prob, n_steps, current_state, n_burnin=0, thin=1, args=[], progress=True, save_lp=False, device="cpu"):
+    """
+    Run affine inavriant MCMC to sample a batch of posteriors.
+
+    This uses the parallel stretch move (Foreman-Mackey et al. 2013)
+    to evolve two simultaneous ensembles of walkers.
+
+    Calls to the `log_prob` will be vectorized over multiple posteriors
+    that are samples simultaneously (e.g. if fitting multiple independent
+    datasets with the same model).
+
+    Parameters
+    ----------
+    log_prob : callable
+        Function for evaluating the target log posterior. Should take a
+        `torch.Tensor` of parameters as input, and should return a
+        `torch.Tensor` of log probabilities. For an input of shape
+        `(n_walkers, n_batch, n_params)`, `log_prob` should return 
+        shape`(n_walkers, n_batch)`.
+    n_steps : int
+        Number of steps to take. One step evolves all walkers in the
+        two ensembles, for all posteriors in the batch, so the total number 
+        of samples per parameter per posterior will be `2 * n_walkers * n_steps`.
+    current_state : tuple of torch.Tensor
+        Initial positions for the walkers. The tuple should contain two
+        tensors, corresponding to the initial positions of the two
+        parallel ensembles. Each tensor should have shape
+        `(n_walkers, n_batch, n_params)`, where `n_walkers` is the number
+        of walkers per parallel ensemble, `n_batch` is the batch size (i.e.
+        number of posteriors to be sampled simultaneously), and `n_params`
+        is the number of parameters being sampled.
+    n_burnin : int, optional
+        Chains will only be stored after `n_burnin` steps have been passed.
+        Only recommended if memory / storage are an issue. Default is 0 (i.e.
+        all steps from the beginning are stored).
+    thin : int, optional
+        Only stores samples every `thin` iterations. Default is 1 (i.e. all
+        iterations are stored).
+    args : list, optional
+        Additional positional arguments to be handed to the `log_prob`.
+    progress : bool, optional
+        If `True`, shows a progress bar using `tqdm`. Default is `True`.
+    save_lp : bool, optional
+        If `True`, saves the log probability of each MCMC sample.
+        Default is `False`.
+    device : str or torch.device, optional
+        Device to perform operations on. Default is `'cpu'`.
+
+    Returns
+    -------
+    chain : torch.Tensor
+        MCMC samples of parameters for all posteriors in the batch.
+        Has shape `[(n_steps-n_burnin)/thin, 2*n_walkers, n_batch, n_params]`.
+    lp_chain : torch.Tensor, optional
+        Log probability for each MCMC sample (if `save_lp=True`).
+        Has shape `[(n_steps-n_burnin)/thin, 2*n_walkers, n_batch]`.
+    """
     # Split the current state
     current_state1, current_state2 = current_state
 
