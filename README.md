@@ -1,6 +1,6 @@
 # affine
-Parallelized affine invariant MCMC sampling implemented in `torch`
+Parallelized affine invariant MCMC sampling implemented in `torch`.
 
-Install `pip install git+https://github.com/justinalsing/affine.git`
+Install: `pip install git+https://github.com/justinalsing/affine.git@torch`
 
-Usage see `affine_sampling_example.ipynb`
+Usage: `affine_sampling_example.ipynb`
