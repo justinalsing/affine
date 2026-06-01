@@ -1,7 +1,7 @@
 import torch
 from tqdm import tqdm
 
-def sample(log_prob, n_params, n_walkers, n_steps, walkers1, walkers2, progress=True, save_lp=False):
+def sample(log_prob, n_params, n_walkers, n_steps, walkers1, walkers2, progress=True, save_lp=False, save_ar=False):
     """
     Run affine inavriant MCMC to sample a single posterior.
 
@@ -35,6 +35,9 @@ def sample(log_prob, n_params, n_walkers, n_steps, walkers1, walkers2, progress=
     save_lp : bool, optional
         If `True`, saves the log probability of each MCMC sample.
         Default is `False`.
+    save_ar : bool, optional
+        If `True`, saves the acceptance rate of proposed steps.
+        Default is `False`. 
 
     Returns
     -------
@@ -43,6 +46,9 @@ def sample(log_prob, n_params, n_walkers, n_steps, walkers1, walkers2, progress=
     lp_chain : torch.Tensor, optional
         Log probability for each MCMC sample. Shape `(n_steps, 2*n_walkers)`.
         Only returned if `save_lp=True`.
+    ar : torch.Tensor, optional
+        Proposal acceptance rate for each walker. Shape  `(2*n_walkers,)`.
+        Only returned if `save_ar=True`.
     """
 
     # Progress-bar
@@ -74,7 +80,8 @@ def sample(log_prob, n_params, n_walkers, n_steps, walkers1, walkers2, progress=
     chain = [torch.cat([current_state1, current_state2], axis=0)]
     if save_lp is True:
         lp_chain = [torch.cat([logp_current1, logp_current2], axis=0)]
-
+    if save_ar is True:
+        ar = torch.zeros(2*n_walkers)
 
     # MCMC loop
     for epoch in range(1, n_steps):
@@ -143,6 +150,9 @@ def sample(log_prob, n_params, n_walkers, n_steps, walkers1, walkers2, progress=
         chain.append(torch.cat([current_state1, current_state2], axis=0))
         if save_lp is True:
             lp_chain.append(torch.cat([logp_current1, logp_current2], axis=0))
+        if save_ar is True:
+            ar[:n_walkers] = ar[:n_walkers] + accept1/(n_steps)
+            ar[n_walkers:] = ar[n_walkers:] + accept2/(n_steps)
 
         # Update the progressbar
         if progress:
@@ -154,12 +164,17 @@ def sample(log_prob, n_params, n_walkers, n_steps, walkers1, walkers2, progress=
         lp_chain = torch.stack(lp_chain, axis=0)
 
     if save_lp is True:
-        return chain, lp_chain
+        if save_ar is True:
+            return chain, lp_chain, ar
+        else:
+            return chain, lp_chain
     else:
-        # Chain = np.unique(chain, axis=0) # this may need to be here,
-        return chain
+        if save_ar is True:
+            return chain, ar
+        else:
+            return chain
 
-def sample_batch(log_prob, n_steps, current_state, n_burnin=0, thin=1, args=[], progress=True, save_lp=False, device="cpu"):
+def sample_batch(log_prob, n_steps, current_state, n_burnin=0, thin=1, args=[], progress=True, save_lp=False, save_ar=False, device="cpu"):
     """
     Run affine inavriant MCMC to sample a batch of posteriors.
 
@@ -204,6 +219,8 @@ def sample_batch(log_prob, n_steps, current_state, n_burnin=0, thin=1, args=[], 
     save_lp : bool, optional
         If `True`, saves the log probability of each MCMC sample.
         Default is `False`.
+    save_ar : bool, optional
+        If `True`, returns the acceptance rate for each walker. Default is `False`.
     device : str or torch.device, optional
         Device to perform operations on. Default is `'cpu'`.
 
@@ -215,6 +232,9 @@ def sample_batch(log_prob, n_steps, current_state, n_burnin=0, thin=1, args=[], 
     lp_chain : torch.Tensor, optional
         Log probability for each MCMC sample (if `save_lp=True`).
         Has shape `[(n_steps-n_burnin)/thin, 2*n_walkers, n_batch]`.
+    acceptance_rate : torch.Tensor, optional
+        Proposal acceptance rate for each walker (if `save_ar=True`).
+        Has shape  `[2*n_walkers, n_batch]`.
     """
     # Split the current state
     current_state1, current_state2 = current_state
@@ -237,6 +257,8 @@ def sample_batch(log_prob, n_steps, current_state, n_burnin=0, thin=1, args=[], 
     chain = torch.zeros((int((n_steps-n_burnin)/thin), n_walkers*2, n_batch, n_params), device=device)
     if save_lp is True:
         lpchain = torch.zeros((int((n_steps-n_burnin)/thin), n_walkers*2, n_batch), device=device)
+    if save_ar is True:
+        ar = torch.zeros((n_walkers*2, n_batch), device=device)
 
     # Progress bar?
     loop = tqdm(range(1, n_steps)) if progress else range(1, n_steps)
@@ -295,8 +317,19 @@ def sample_batch(log_prob, n_steps, current_state, n_burnin=0, thin=1, args=[], 
                 lpchain[counter] = torch.unsqueeze(torch.cat([logp_current1, logp_current2], dim=0), dim=0)
             counter += 1
 
+        # Update acceptance rate if we're past burnin
+        if epoch >= n_burnin and save_ar is True:
+            ar[:n_walkers] = ar[:n_walkers] + accept1/(n_steps - n_burnin)
+            ar[n_walkers:] = ar[n_walkers:] + accept2/(n_steps - n_burnin)
+
     # Stack up the chain and return
     if save_lp is True:
-        return chain, lpchain
+        if save_ar is True:
+            return chain, lpchain, ar
+        else:
+            return chain, lpchain
     else:
-        return chain
+        if save_ar is True:
+            return chain, ar
+        else:
+            return chain

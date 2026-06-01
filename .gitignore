@@ -1,2 +1,3 @@
 .DS_Store
+.ipynb_checkpoints
 affine/__pycache__/*
